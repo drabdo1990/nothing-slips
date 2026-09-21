@@ -1,0 +1,21 @@
+# Normalize line endings for every text file in the repo.
+#
+# Without this, a Windows checkout rewrites every file to CRLF, and the next `git status` reports
+# all of them as modified — a diff that says nothing. The source of truth is LF.
+* text=auto eol=lf
+
+# Windows-only scripts stay CRLF so they run under cmd/PowerShell without surprises.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# Binary assets must never be touched by text normalisation.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.woff binary
+*.woff2 binary
+*.pdf binary
