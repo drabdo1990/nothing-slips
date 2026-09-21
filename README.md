@@ -32,22 +32,64 @@ The app **fails fast at boot** if `DATABASE_URL` or `AUTH_SECRET` is missing, ra
 misbehaving later. Push keys are optional: without them the app degrades to email + in-app alarms
 instead of breaking.
 
-### Scheduled work
+### Scheduled work — and the one real constraint of the free tier
 
-`vercel.json` registers two cron jobs:
+**A per-minute cron is not available on Vercel Hobby.** Hobby accounts may only run cron jobs that
+fire **once per day**, so `vercel.json` ships a daily safety-net sweep rather than the `* * * * *`
+the design wants. You have three ways to get alarms that fire on time:
 
-| Path | Schedule | Purpose |
-|---|---|---|
-| `/api/cron/tick` | every minute | materialize reminders, deliver due alarms |
-| `/api/cron/sync-calendars` | every 15 min | optional Google two-way sync |
+| Option | Cost | Tick | Notes |
+|---|---|---|---|
+| **External trigger** (cron-job.org, Cloudflare Worker) | free | 1 min | Recommended. Keeps every other piece on Vercel's free tier. |
+| **Vercel Pro** | ~$20/mo | 1 min | Then restore `"schedule": "* * * * *"` in `vercel.json` and remove the external trigger. |
+| **Accept a slower tick** (e.g. QStash at 5 min) | free | 5 min | The sweep window means alarms still arrive, but up to 5 minutes late, and say so. |
 
-Vercel sends `Authorization: Bearer $CRON_SECRET`; the routes require it in production.
+Whichever you choose, the endpoint is already protected: it requires
+`Authorization: Bearer $CRON_SECRET` in production, so an external caller cannot be forged.
 
-Locally, there is no cron — run the scheduler by hand:
+**cron-job.org (free, 1-minute)** — create a job with:
+
+```
+URL     https://<your-app>.vercel.app/api/cron/tick
+Schedule  every 1 minute
+Header   Authorization: Bearer <CRON_SECRET>
+```
+
+**Cloudflare Worker cron (free, no third party)** — `wrangler.toml`:
+
+```toml
+name = "nothing-slips-tick"
+main = "src/index.js"
+compatibility_date = "2026-01-01"
+
+[triggers]
+crons = ["* * * * *"]
+```
+
+and `src/index.js`:
+
+```js
+export default {
+  async scheduled(_event, env) {
+    await fetch(`${env.APP_URL}/api/cron/tick`, {
+      headers: { authorization: `Bearer ${env.CRON_SECRET}` },
+    });
+  },
+};
+```
+
+Either way, a tick that is late or skipped still delivers — the scheduler sweeps a window and states
+its lateness rather than assuming it fired on time.
+
+Locally there is no cron at all. Drive the scheduler (and inspect the ledger) by hand:
 
 ```bash
-npm run tick
+npm run tick      # materialize + deliver everything now due
+npm run alarms    # "did it actually alarm me?" — the full audit trail
 ```
+
+`npm run alarms` prints the reminder ledger: status, due time, attempts, and the per-channel
+delivery log. It is the CLI counterpart to the alarm panel on an event page.
 
 ---
 
