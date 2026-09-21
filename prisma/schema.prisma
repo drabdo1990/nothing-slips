@@ -1,0 +1,315 @@
+// prisma/schema.prisma
+//
+// Domain rules encoded here, deliberately:
+//  * Every instant is `DateTime` => Prisma stores `timestamp(3)` in UTC. Never a naked local string.
+//  * All-day events use DATE-ONLY strings (YYYY-MM-DD). A midnight timestamp is timezone-dependent
+//    and would shift; a calendar date must not. DTEND is EXCLUSIVE (iCalendar semantics).
+//  * Recurrence is one RFC 5545 RRULE string on the series master. Occurrences are EXPANDED on
+//    demand, never materialized. Per-occurrence edits are self-referencing override rows.
+//  * A Reminder is a row with STATE, never an inference. Idempotency comes from
+//    @@unique([occurrenceId, offsetMinutes, scheduledFor]) + a claim lease.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────────────────────── auth
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+
+  // IANA identifier, e.g. "Europe/Berlin". NEVER an offset like "+01:00".
+  timezone             String  @default("UTC")
+  quietHoursEnabled    Boolean @default(false)
+  // Local wall-clock times ("22:00"/"07:00") in `timezone`. Evaluated per-tick with Luxon,
+  // so they follow DST automatically.
+  quietHoursStart      String  @default("22:00")
+  quietHoursEnd        String  @default("07:00")
+  dnd                  Boolean @default(false)
+  // Minutes-before-start defaults applied to new events, e.g. [1440, 60, 10].
+  defaultReminderOffsets Int[] @default([10])
+  // Email is the fallback when push is denied or fails.
+  emailFallbackEnabled Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  accounts          Account[]
+  sessions          Session[]
+  events            Event[]
+  categories        Category[]
+  reminderRules     ReminderRule[]
+  reminders         Reminder[]
+  notificationLogs  NotificationLog[]
+  pushSubscriptions PushSubscription[]
+  calendarAccounts  CalendarAccount[]
+
+  @@map("users")
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
+
+// ─────────────────────────────────────────────────────────────── calendar
+
+enum EventStatus {
+  confirmed
+  cancelled // a cancelled override row = "this occurrence (and its reminders) is off"
+}
+
+model Category {
+  id     String @id @default(cuid())
+  userId String
+  name   String
+  color  String @default("#3e6b8c")
+  icon   String @default("calendar")
+
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  events Event[]
+
+  @@unique([userId, name])
+  @@map("categories")
+}
+
+model Event {
+  id       String  @id @default(cuid())
+  userId   String
+  user     User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title    String
+  notes    String? @db.Text
+  location String?
+
+  categoryId String?
+  category   Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+
+  // ── Timing ────────────────────────────────────────────────────────────────
+  allDay   Boolean
+  // The IANA zone this event's wall-clock is anchored to. For a normal event this equals the
+  // owner's timezone; for a cross-timezone meeting the user pins the destination zone so the
+  // *local* wall clock ("10:00 Berlin") survives DST and travel.
+  timezone String
+
+  // Timed events: UTC instants.
+  startUtc DateTime?
+  endUtc   DateTime?
+
+  // All-day events: date-only, [startDate, endDate) — endDate is EXCLUSIVE.
+  startDate String? // YYYY-MM-DD
+  endDate   String? // YYYY-MM-DD
+
+  // ── Recurrence ────────────────────────────────────────────────────────────
+  rrule String? // RFC 5545, e.g. "FREQ=WEEKLY;BYDAY=TH;COUNT=10"
+  // Occurrences explicitly removed from the series (EXDATE), stored as UTC ISO-8601 starts.
+  exdates String[] @default([])
+
+  // ── Series / override linkage ─────────────────────────────────────────────
+  // Master row: seriesId = null. Override row: seriesId = master.id.
+  seriesId     String?
+  series       Event?  @relation("EventSeries", fields: [seriesId], references: [id], onDelete: Cascade)
+  overrides    Event[] @relation("EventSeries")
+  // On an override row: the ORIGINAL occurrence start (UTC ISO) this row replaces.
+  recurrenceId String?
+
+  status EventStatus @default(confirmed)
+
+  // ── Behaviour ─────────────────────────────────────────────────────────────
+  // "This genuinely cannot be missed" — allowed to break quiet hours / DND.
+  overrideQuietHours Boolean @default(false)
+  // Travel-time buffer before an event with a location; shown as a gap on the timeline.
+  travelBufferMinutes Int     @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // ── External calendar linkage ─────────────────────────────────────────────
+  // Written ONLY by src/lib/sync. Null for every locally-created event, so removing the sync
+  // feature is a one-line cleanup and core scheduling never needs to know it exists.
+  externalSource String?
+  externalId     String?
+
+  reminderRules ReminderRule[]
+  reminders     Reminder[]
+
+  @@unique([seriesId, recurrenceId])
+  @@unique([userId, externalSource, externalId])
+  @@index([userId, startUtc])
+  @@index([seriesId])
+  @@map("events")
+}
+
+// A per-event reminder *rule* (a template). Occurrences are materialized into `Reminder` rows
+// for a rolling window by the scheduler — this is what keeps recurrence unbounded on disk.
+model ReminderRule {
+  id            String   @id @default(cuid())
+  userId        String
+  eventId       String
+  offsetMinutes Int // minutes BEFORE start; 0 = at start; 1440 = 1 day before
+  channels      String[] @default(["push", "email"])
+  createdAt     DateTime @default(now())
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, offsetMinutes])
+  @@map("reminder_rules")
+}
+
+enum ReminderStatus {
+  pending // due, not yet claimed
+  claimed // leased to a tick; in-flight delivery
+  sent // delivered on at least one channel
+  acknowledged // user tapped "Got it"
+  snoozed // superseded by a new pending row
+  missed // all channels failed, or the window closed
+  cancelled // event/occurrence deleted or edited
+  deferred // pushed out of quiet hours; will fire at `scheduledFor`
+}
+
+model Reminder {
+  id     String @id @default(cuid())
+  userId String
+  // The effective event for this occurrence (the override row when one exists, else the master).
+  eventId String
+  // Stable identity of the occurrence: "evt_<rootEventId>" or "evt_<rootEventId>#<startUtcIso>".
+  occurrenceId       String
+  occurrenceStartUtc DateTime
+
+  offsetMinutes Int
+  // The UTC instant this reminder is due. Changing it (snooze/defer/retry) is intentional: the
+  // unique key includes it, so a new due-time is a legitimately new piece of work.
+  scheduledFor  DateTime
+
+  status ReminderStatus @default(pending)
+
+  // Channel snapshot at materialization time, so settings edits do not retro-edit history.
+  channels        String[]
+  quietOverride   Boolean @default(false)
+
+  attempts     Int      @default(0)
+  lastError    String?
+  claimToken   String?
+  claimedAt    DateTime?
+  sentAt       DateTime?
+  acknowledgedAt DateTime?
+  snoozedUntil DateTime?
+  // Honest lateness: how late this actually fired vs. when it was due.
+  lateBySeconds Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user   User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  event  Event           @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  logs   NotificationLog[]
+
+  // THE idempotency guarantee: a retried or double-firing tick cannot create a second
+  // reminder for the same (occurrence, offset, due-time).
+  @@unique([occurrenceId, offsetMinutes, scheduledFor])
+  // Drives the claim query.
+  @@index([status, scheduledFor])
+  @@index([userId, scheduledFor])
+  @@map("reminders")
+}
+
+// Every attempted delivery, so "did it actually alarm me?" is answerable from data.
+model NotificationLog {
+  id         String   @id @default(cuid())
+  userId     String
+  reminderId String?
+  channel    String // "push" | "email" | "inapp"
+  result     String // "sent" | "failed" | "skipped"
+  detail     String? @db.Text // populated from transport errors; never contains calendar body text
+  lateBySeconds Int?
+  attemptedAt DateTime @default(now())
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reminder Reminder? @relation(fields: [reminderId], references: [id], onDelete: SetNull)
+
+  @@index([reminderId])
+  @@index([userId, attemptedAt])
+  @@map("notification_logs")
+}
+
+model PushSubscription {
+  id           String  @id @default(cuid())
+  userId       String
+  endpoint     String  @unique // the natural idempotency key for a browser subscription
+  p256dh       String
+  auth         String
+  userAgent    String?
+  disabled     Boolean @default(false) // set on 404/410 from the push service
+  failureCount Int     @default(0)
+  lastSeenAt   DateTime @default(now())
+  createdAt    DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, disabled])
+  @@map("push_subscriptions")
+}
+
+// Google Calendar sync lives behind CalendarSyncProvider and touches ONLY this table plus
+// Event rows it owns. Removing the feature = deleting this model and the lib/sync folder.
+model CalendarAccount {
+  id                 String  @id @default(cuid())
+  userId             String
+  provider           String // "google"
+  externalCalendarId String
+  // In production this is encrypted at rest with a KMS-managed key; never logged.
+  refreshTokenEnc    String  @db.Text
+  syncToken          String?
+  enabled            Boolean @default(true)
+  lastSyncedAt       DateTime?
+  lastError          String?
+  createdAt          DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, provider, externalCalendarId])
+  @@map("calendar_accounts")
+}

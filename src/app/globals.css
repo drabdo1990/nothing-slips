@@ -1,0 +1,139 @@
+/* app/globals.css
+ * The single source of truth for the design language.
+ * Tailwind v4 is CSS-first: everything declared in @theme becomes a utility.
+ * Adding a token here instantly makes it available as a background, text or border utility.
+ */
+@import "tailwindcss";
+
+@theme {
+  /* ---------- Brand: calm, clear, dependable ---------- */
+  --color-primary-50: #eef4f9;
+  --color-primary-100: #d8e6f1;
+  --color-primary-200: #b7d0e4;
+  --color-primary-300: #93b5d0;
+  --color-primary-400: #6795b8;
+  --color-primary-500: #3e6b8c; /* primary */
+  --color-primary-600: #345b78;
+  --color-primary-700: #2a4a63;
+
+  --color-secondary-100: #e4ece8;
+  --color-secondary-500: #6c8f7e;
+  --color-secondary-700: #4d6b5c;
+
+  /* ---------- Neutrals ---------- */
+  --color-ink: #14202b;
+  --color-slate: #5a6b7b;
+  --color-mist: #e6ebf1;
+  --color-paper: #f8fafc;
+  --color-surface: #ffffff;
+
+  /* ---------- Semantic status (used by StatusPill + countdown) ---------- */
+  --color-status-upcoming: #3e6b8c;
+  --color-status-imminent: #b47b1e;
+  --color-status-now: #2e7d5b;
+  --color-status-overdue: #b4453a;
+  --color-status-done: #93a2b1;
+
+  --color-danger-50: #fdf0ee;
+  --color-danger-500: #b4453a;
+  --color-success-50: #eaf5f0;
+  --color-success-500: #2e7d5b;
+  --color-warn-50: #fdf6e8;
+  --color-warn-500: #b47b1e;
+
+  /* ---------- Type scale (12 / 14 / 16 / 18 / 24 / 32) ---------- */
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-lg: 1.125rem;
+  --text-2xl: 1.5rem;
+  --text-4xl: 2rem;
+
+  /* ---------- Spacing scale 4/8/12/16/24/32/48 ---------- */
+  --spacing-1: 4px;
+  --spacing-2: 8px;
+  --spacing-3: 12px;
+  --spacing-4: 16px;
+  --spacing-6: 24px;
+  --spacing-8: 32px;
+  --spacing-12: 48px;
+
+  --radius-card: 14px;
+  --shadow-card: 0 1px 2px rgb(20 32 43 / 0.06), 0 1px 8px rgb(20 32 43 / 0.04);
+}
+
+/* Dark mode: same semantics, flipped values. Nothing in the app hardcodes hex. */
+@media (prefers-color-scheme: dark) {
+  @theme {
+    --color-ink: #eef2f6;
+    --color-slate: #a3b1be;
+    --color-mist: #2a3743;
+    --color-paper: #101a22;
+    --color-surface: #17232d;
+  }
+}
+
+html {
+  color-scheme: light dark;
+}
+
+body {
+  background: var(--color-paper);
+  color: var(--color-ink);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Times and durations are tabular data. Enforce it globally, not per-component. */
+time,
+.tabular {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+/* One consistent focus treatment everywhere (accessibility, non-negotiable). */
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--color-primary-500);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* Motion: subtle and fast. The alarm banner opts out deliberately (see AlarmBanner). */
+@media (prefers-reduced-motion: no-preference) {
+  .transition-quiet {
+    transition-property: color, background-color, border-color, box-shadow, transform;
+    transition-duration: 180ms;
+    transition-timing-function: cubic-bezier(0.2, 0, 0.2, 1);
+  }
+
+  /* The ONE assertive animation in the app: an alarm arriving. It draws the eye on purpose. */
+  @keyframes alarm-enter {
+    from {
+      opacity: 0;
+      transform: translateY(-8px) scale(0.99);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  .alarm-enter {
+    animation: alarm-enter 220ms cubic-bezier(0.2, 0, 0.2, 1);
+  }
+}
+
+/* Screen-reader-only helper for time/countdown text that is decorative visually. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px
+  ;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
