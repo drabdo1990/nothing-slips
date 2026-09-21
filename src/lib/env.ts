@@ -1,13 +1,13 @@
 // src/lib/env.ts
 //
-// Fail fast and loudly at boot rather than mid-alarm. Every secret the scheduler needs is
-// validated here; if VAPID keys are missing we degrade to email instead of crashing the tick.
+// Fail fast and loudly rather than mid-alarm — but only for what the current entrypoint actually
+// needs. The scheduler (`npm run tick`) and the seed script are legitimate entrypoints that never
+// touch authentication, so they must not be forced to fake an AUTH_SECRET to run.
 
 import { z } from "zod";
 
 const schema = z.object({
   DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
-  AUTH_SECRET: z.string().min(1, "AUTH_SECRET is required"),
   AUTH_URL: z.string().url().optional(),
   RESEND_API_KEY: z.string().optional(),
   EMAIL_FROM: z.string().default("Nothing Slips <alarms@example.com>"),
@@ -31,6 +31,23 @@ function load(): Env {
 }
 
 export const env = load();
+
+/**
+ * The session secret, validated at the point of use rather than at import.
+ *
+ * Auth.js is imported by nearly every route, so in the web app this still fails fast — the error
+ * just surfaces on the first authenticated request instead of on process boot. In exchange,
+ * `prisma/seed.ts` and `scripts/tick.ts` no longer require a secret they have no use for.
+ */
+export function requireAuthSecret(): string {
+  const secret = process.env.AUTH_SECRET;
+  if (!secret || secret.length < 16) {
+    throw new Error(
+      "AUTH_SECRET is required for authentication and must be at least 16 characters. See .env.example.",
+    );
+  }
+  return secret;
+}
 
 /** Push is optional infrastructure: absent keys mean "email-only", not "broken app". */
 export function pushConfigured(): boolean {

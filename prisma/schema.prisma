@@ -1,7 +1,17 @@
 // prisma/schema.prisma
 //
 // Domain rules encoded here, deliberately:
-//  * Every instant is `DateTime` => Prisma stores `timestamp(3)` in UTC. Never a naked local string.
+//  * Every instant is `DateTime` in UTC — and declared `@db.Timestamptz(3)`.
+//
+//    WHY Timestamptz MATTERS (this was a real bug, not a preference):
+//    Prisma maps `DateTime` to `timestamp(3)` — timestamp WITHOUT time zone — by default, and binds
+//    JS Date parameters as `timestamptz`. Postgres then resolves that mixed comparison by converting
+//    the *column* into the session timezone. With a session timezone of `Asia/Riyadh` (+03:00) the
+//    scheduler's sweep window silently shifted by three hours: alarms due 1–3 hours ago were never
+//    claimed, and alarms up to 3 hours in the future were claimed early. Every date filter in the
+//    app was affected, not just raw SQL. `timestamptz` makes the comparison unambiguous in any
+//    session timezone, which is the only defensible storage for an instant in an alarm app.
+//
 //  * All-day events use DATE-ONLY strings (YYYY-MM-DD). A midnight timestamp is timezone-dependent
 //    and would shift; a calendar date must not. DTEND is EXCLUSIVE (iCalendar semantics).
 //  * Recurrence is one RFC 5545 RRULE string on the series master. Occurrences are EXPANDED on
@@ -29,7 +39,7 @@ model User {
   id            String    @id @default(cuid())
   name          String?
   email         String    @unique
-  emailVerified DateTime?
+  emailVerified DateTime? @db.Timestamptz(3)
   image         String?
 
   // IANA identifier, e.g. "Europe/Berlin". NEVER an offset like "+01:00".
@@ -45,8 +55,8 @@ model User {
   // Email is the fallback when push is denied or fails.
   emailFallbackEnabled Boolean @default(true)
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
 
   accounts          Account[]
   sessions          Session[]
@@ -85,7 +95,7 @@ model Session {
   id           String   @id @default(cuid())
   sessionToken String   @unique
   userId       String
-  expires      DateTime
+  expires      DateTime @db.Timestamptz(3)
   user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("sessions")
@@ -94,7 +104,7 @@ model Session {
 model VerificationToken {
   identifier String
   token      String
-  expires    DateTime
+  expires    DateTime @db.Timestamptz(3)
 
   @@unique([identifier, token])
   @@map("verification_tokens")
@@ -140,8 +150,8 @@ model Event {
   timezone String
 
   // Timed events: UTC instants.
-  startUtc DateTime?
-  endUtc   DateTime?
+  startUtc DateTime? @db.Timestamptz(3)
+  endUtc   DateTime? @db.Timestamptz(3)
 
   // All-day events: date-only, [startDate, endDate) — endDate is EXCLUSIVE.
   startDate String? // YYYY-MM-DD
@@ -168,8 +178,8 @@ model Event {
   // Travel-time buffer before an event with a location; shown as a gap on the timeline.
   travelBufferMinutes Int     @default(0)
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
 
   // ── External calendar linkage ─────────────────────────────────────────────
   // Written ONLY by src/lib/sync. Null for every locally-created event, so removing the sync
@@ -195,7 +205,7 @@ model ReminderRule {
   eventId       String
   offsetMinutes Int // minutes BEFORE start; 0 = at start; 1440 = 1 day before
   channels      String[] @default(["push", "email"])
-  createdAt     DateTime @default(now())
+  createdAt     DateTime @default(now()) @db.Timestamptz(3)
 
   user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
   event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
@@ -222,31 +232,31 @@ model Reminder {
   eventId String
   // Stable identity of the occurrence: "evt_<rootEventId>" or "evt_<rootEventId>#<startUtcIso>".
   occurrenceId       String
-  occurrenceStartUtc DateTime
+  occurrenceStartUtc DateTime @db.Timestamptz(3)
 
   offsetMinutes Int
   // The UTC instant this reminder is due. Changing it (snooze/defer/retry) is intentional: the
   // unique key includes it, so a new due-time is a legitimately new piece of work.
-  scheduledFor  DateTime
+  scheduledFor  DateTime @db.Timestamptz(3)
 
   status ReminderStatus @default(pending)
 
   // Channel snapshot at materialization time, so settings edits do not retro-edit history.
-  channels        String[]
-  quietOverride   Boolean @default(false)
+  channels      String[]
+  quietOverride Boolean @default(false)
 
-  attempts     Int      @default(0)
-  lastError    String?
-  claimToken   String?
-  claimedAt    DateTime?
-  sentAt       DateTime?
-  acknowledgedAt DateTime?
-  snoozedUntil DateTime?
+  attempts       Int       @default(0)
+  lastError      String?
+  claimToken     String?
+  claimedAt      DateTime? @db.Timestamptz(3)
+  sentAt         DateTime? @db.Timestamptz(3)
+  acknowledgedAt DateTime? @db.Timestamptz(3)
+  snoozedUntil   DateTime? @db.Timestamptz(3)
   // Honest lateness: how late this actually fired vs. when it was due.
-  lateBySeconds Int?
+  lateBySeconds  Int?
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
 
   user   User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   event  Event           @relation(fields: [eventId], references: [id], onDelete: Cascade)
@@ -263,14 +273,14 @@ model Reminder {
 
 // Every attempted delivery, so "did it actually alarm me?" is answerable from data.
 model NotificationLog {
-  id         String   @id @default(cuid())
-  userId     String
-  reminderId String?
-  channel    String // "push" | "email" | "inapp"
-  result     String // "sent" | "failed" | "skipped"
-  detail     String? @db.Text // populated from transport errors; never contains calendar body text
+  id            String   @id @default(cuid())
+  userId        String
+  reminderId    String?
+  channel       String // "push" | "email" | "inapp" | "none"
+  result        String // "sent" | "failed" | "skipped"
+  detail        String?  @db.Text // transport errors only; never calendar body text
   lateBySeconds Int?
-  attemptedAt DateTime @default(now())
+  attemptedAt   DateTime @default(now()) @db.Timestamptz(3)
 
   user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   reminder Reminder? @relation(fields: [reminderId], references: [id], onDelete: SetNull)
@@ -281,16 +291,16 @@ model NotificationLog {
 }
 
 model PushSubscription {
-  id           String  @id @default(cuid())
+  id           String   @id @default(cuid())
   userId       String
-  endpoint     String  @unique // the natural idempotency key for a browser subscription
+  endpoint     String   @unique // the natural idempotency key for a browser subscription
   p256dh       String
   auth         String
   userAgent    String?
-  disabled     Boolean @default(false) // set on 404/410 from the push service
-  failureCount Int     @default(0)
-  lastSeenAt   DateTime @default(now())
-  createdAt    DateTime @default(now())
+  disabled     Boolean  @default(false) // set on 404/410 from the push service
+  failureCount Int      @default(0)
+  lastSeenAt   DateTime @default(now()) @db.Timestamptz(3)
+  createdAt    DateTime @default(now()) @db.Timestamptz(3)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -301,17 +311,17 @@ model PushSubscription {
 // Google Calendar sync lives behind CalendarSyncProvider and touches ONLY this table plus
 // Event rows it owns. Removing the feature = deleting this model and the lib/sync folder.
 model CalendarAccount {
-  id                 String  @id @default(cuid())
+  id                 String    @id @default(cuid())
   userId             String
   provider           String // "google"
   externalCalendarId String
   // In production this is encrypted at rest with a KMS-managed key; never logged.
-  refreshTokenEnc    String  @db.Text
+  refreshTokenEnc    String    @db.Text
   syncToken          String?
-  enabled            Boolean @default(true)
-  lastSyncedAt       DateTime?
+  enabled            Boolean   @default(true)
+  lastSyncedAt       DateTime? @db.Timestamptz(3)
   lastError          String?
-  createdAt          DateTime @default(now())
+  createdAt          DateTime  @default(now()) @db.Timestamptz(3)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 

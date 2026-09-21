@@ -8,7 +8,6 @@
 
 import { PrismaClient } from "@prisma/client";
 import { DateTime } from "luxon";
-import { rrulestr } from "rrule";
 
 const prisma = new PrismaClient();
 

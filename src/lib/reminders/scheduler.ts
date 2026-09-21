@@ -494,11 +494,29 @@ export async function materializeReminders(input: MaterializeInput): Promise<Mat
   // an occurrence in even when the occurrence itself sits just outside it).
   const due = planned.filter((p) => p.scheduledFor >= fromUtc && p.scheduledFor <= toUtc);
 
+  const watchedEventIds = masters.flatMap((m) => [m.id, ...m.overrides.map((o) => o.id)]);
+
+  // ONE LIVE REMINDER PER (event, occurrence, offset).
+  //
+  // The unique key includes `scheduledFor`, which makes CREATION idempotent — but it also means the
+  // plan (which is recomputed fresh every tick from the immutable event/rule data) would happily
+  // create a second row at the original due time after the scheduler itself moved the first one
+  // (retry backoff, quiet-hours deferral, snooze). That is an alarm loop: recreate → claim → fail →
+  // reschedule → recreate. So a row that is anything other than `cancelled` blocks its own
+  // replacement, while `cancelled` (set by the action layer when an event is edited or an
+  // occurrence removed) deliberately does not — otherwise an edit could never reschedule anything.
+  const live = await prisma.reminder.findMany({
+    where: { eventId: { in: watchedEventIds }, status: { not: "cancelled" }, scheduledFor: { gte: fromUtc, lte: toUtc } },
+    select: { eventId: true, occurrenceId: true, offsetMinutes: true },
+  });
+  const blocked = new Set(live.map((r) => `${r.eventId}|${r.occurrenceId}|${r.offsetMinutes}`));
+  const toCreate = due.filter((p) => !blocked.has(`${p.eventId}|${p.occurrenceId}|${p.offsetMinutes}`));
+
   let created = 0;
-  if (due.length > 0) {
-    // skipDuplicates + the unique key = the idempotency guarantee. A re-run inserts nothing.
+  if (toCreate.length > 0) {
+    // skipDuplicates + the unique key = the idempotency guarantee for concurrent ticks.
     const written = await prisma.reminder.createMany({
-      data: due.map((p) => ({
+      data: toCreate.map((p) => ({
         userId: p.userId,
         eventId: p.eventId,
         occurrenceId: p.occurrenceId,
@@ -514,30 +532,27 @@ export async function materializeReminders(input: MaterializeInput): Promise<Mat
     created = written.count;
   }
 
-  // Reconciliation: an EXDATE, an edit, an offset change or a series split can invalidate rows that
-  // already exist. A row's identity IS (event, occurrence, offset, due) — so anything in the window
-  // that is not in the planned set is stale by definition. This is cheap: the window is bounded.
-  const plannedIdentity = new Set(
-    due.map(
-      (p) => `${p.eventId}|${p.occurrenceId}|${p.offsetMinutes}|${p.scheduledFor.toISOString()}`,
-    ),
-  );
+  // Reconciliation: an EXDATE, a deleted rule or a series split can invalidate rows that already
+  // exist. A row's identity for reconciliation is (event, occurrence, offset) — deliberately NOT
+  // including `scheduledFor`.
+  //
+  // That omission is load-bearing: the scheduler itself moves `scheduledFor` when it defers out of
+  // quiet hours or retries a failed delivery. Keying on the due time made every tick cancel its own
+  // retry row. Changes to an event's *time* are invalidated explicitly by the action layer instead
+  // (cancelRemindersForOccurrence / cancelFutureReminders), which is where the intent is known.
+  const plannedOccurrences = new Set(due.map((p) => `${p.eventId}|${p.occurrenceId}|${p.offsetMinutes}`));
 
-  const watchedEventIds = masters.flatMap((m) => [m.id, ...m.overrides.map((o) => o.id)]);
   const existing = await prisma.reminder.findMany({
     where: {
       eventId: { in: watchedEventIds },
       status: { in: ["pending", "deferred"] },
       scheduledFor: { gte: fromUtc, lte: toUtc },
     },
-    select: { id: true, eventId: true, occurrenceId: true, offsetMinutes: true, scheduledFor: true },
+    select: { id: true, eventId: true, occurrenceId: true, offsetMinutes: true },
   });
 
   const toCancel = existing.filter(
-    (row) =>
-      !plannedIdentity.has(
-        `${row.eventId}|${row.occurrenceId}|${row.offsetMinutes}|${row.scheduledFor.toISOString()}`,
-      ),
+    (row) => !plannedOccurrences.has(`${row.eventId}|${row.occurrenceId}|${row.offsetMinutes}`),
   );
 
   if (toCancel.length > 0) {

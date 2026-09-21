@@ -17,7 +17,8 @@
     "db:migrate": "prisma migrate dev",
     "db:seed": "tsx prisma/seed.ts",
     "db:studio": "prisma studio",
-    "tick": "tsx scripts/tick.ts"
+    "tick": "tsx scripts/tick.ts",
+    "alarms": "tsx scripts/alarm-status.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

@@ -12,7 +12,7 @@ CREATE TABLE "users" (
     "id" TEXT NOT NULL,
     "name" TEXT,
     "email" TEXT NOT NULL,
-    "emailVerified" TIMESTAMP(3),
+    "emailVerified" TIMESTAMPTZ(3),
     "image" TEXT,
     "timezone" TEXT NOT NULL DEFAULT 'UTC',
     "quietHoursEnabled" BOOLEAN NOT NULL DEFAULT false,
@@ -21,8 +21,8 @@ CREATE TABLE "users" (
     "dnd" BOOLEAN NOT NULL DEFAULT false,
     "defaultReminderOffsets" INTEGER[] DEFAULT ARRAY[10]::INTEGER[],
     "emailFallbackEnabled" BOOLEAN NOT NULL DEFAULT true,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL,
+    "createdAt" TIMESTAMPTZ(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMPTZ(3) NOT NULL,
 
     CONSTRAINT "users_pkey" PRIMARY KEY ("id")
 );
@@ -50,7 +50,7 @@ CREATE TABLE "sessions" (
     "id" TEXT NOT NULL,
     "sessionToken" TEXT NOT NULL,
     "userId" TEXT NOT NULL,
-    "expires" TIMESTAMP(3) NOT NULL,
+    "expires" TIMESTAMPTZ(3) NOT NULL,
 
     CONSTRAINT "sessions_pkey" PRIMARY KEY ("id")
 );
@@ -59,7 +59,7 @@ CREATE TABLE "sessions" (
 CREATE TABLE "verification_tokens" (
     "identifier" TEXT NOT NULL,
     "token" TEXT NOT NULL,
-    "expires" TIMESTAMP(3) NOT NULL
+    "expires" TIMESTAMPTZ(3) NOT NULL
 );
 
 -- CreateTable
@@ -83,8 +83,8 @@ CREATE TABLE "events" (
     "categoryId" TEXT,
     "allDay" BOOLEAN NOT NULL,
     "timezone" TEXT NOT NULL,
-    "startUtc" TIMESTAMP(3),
-    "endUtc" TIMESTAMP(3),
+    "startUtc" TIMESTAMPTZ(3),
+    "endUtc" TIMESTAMPTZ(3),
     "startDate" TEXT,
     "endDate" TEXT,
     "rrule" TEXT,
@@ -94,8 +94,8 @@ CREATE TABLE "events" (
     "status" "EventStatus" NOT NULL DEFAULT 'confirmed',
     "overrideQuietHours" BOOLEAN NOT NULL DEFAULT false,
     "travelBufferMinutes" INTEGER NOT NULL DEFAULT 0,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL,
+    "createdAt" TIMESTAMPTZ(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMPTZ(3) NOT NULL,
     "externalSource" TEXT,
     "externalId" TEXT,
 
@@ -109,7 +109,7 @@ CREATE TABLE "reminder_rules" (
     "eventId" TEXT NOT NULL,
     "offsetMinutes" INTEGER NOT NULL,
     "channels" TEXT[] DEFAULT ARRAY['push', 'email']::TEXT[],
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "createdAt" TIMESTAMPTZ(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "reminder_rules_pkey" PRIMARY KEY ("id")
 );
@@ -120,22 +120,22 @@ CREATE TABLE "reminders" (
     "userId" TEXT NOT NULL,
     "eventId" TEXT NOT NULL,
     "occurrenceId" TEXT NOT NULL,
-    "occurrenceStartUtc" TIMESTAMP(3) NOT NULL,
+    "occurrenceStartUtc" TIMESTAMPTZ(3) NOT NULL,
     "offsetMinutes" INTEGER NOT NULL,
-    "scheduledFor" TIMESTAMP(3) NOT NULL,
+    "scheduledFor" TIMESTAMPTZ(3) NOT NULL,
     "status" "ReminderStatus" NOT NULL DEFAULT 'pending',
     "channels" TEXT[],
     "quietOverride" BOOLEAN NOT NULL DEFAULT false,
     "attempts" INTEGER NOT NULL DEFAULT 0,
     "lastError" TEXT,
     "claimToken" TEXT,
-    "claimedAt" TIMESTAMP(3),
-    "sentAt" TIMESTAMP(3),
-    "acknowledgedAt" TIMESTAMP(3),
-    "snoozedUntil" TIMESTAMP(3),
+    "claimedAt" TIMESTAMPTZ(3),
+    "sentAt" TIMESTAMPTZ(3),
+    "acknowledgedAt" TIMESTAMPTZ(3),
+    "snoozedUntil" TIMESTAMPTZ(3),
     "lateBySeconds" INTEGER,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL,
+    "createdAt" TIMESTAMPTZ(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMPTZ(3) NOT NULL,
 
     CONSTRAINT "reminders_pkey" PRIMARY KEY ("id")
 );
@@ -149,7 +149,7 @@ CREATE TABLE "notification_logs" (
     "result" TEXT NOT NULL,
     "detail" TEXT,
     "lateBySeconds" INTEGER,
-    "attemptedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "attemptedAt" TIMESTAMPTZ(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "notification_logs_pkey" PRIMARY KEY ("id")
 );
@@ -164,8 +164,8 @@ CREATE TABLE "push_subscriptions" (
     "userAgent" TEXT,
     "disabled" BOOLEAN NOT NULL DEFAULT false,
     "failureCount" INTEGER NOT NULL DEFAULT 0,
-    "lastSeenAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "lastSeenAt" TIMESTAMPTZ(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "createdAt" TIMESTAMPTZ(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "push_subscriptions_pkey" PRIMARY KEY ("id")
 );
@@ -179,9 +179,9 @@ CREATE TABLE "calendar_accounts" (
     "refreshTokenEnc" TEXT NOT NULL,
     "syncToken" TEXT,
     "enabled" BOOLEAN NOT NULL DEFAULT true,
-    "lastSyncedAt" TIMESTAMP(3),
+    "lastSyncedAt" TIMESTAMPTZ(3),
     "lastError" TEXT,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "createdAt" TIMESTAMPTZ(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "calendar_accounts_pkey" PRIMARY KEY ("id")
 );

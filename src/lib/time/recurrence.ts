@@ -16,7 +16,7 @@
 // never shift by a timezone.
 
 import { DateTime } from "luxon";
-import { rrulestr } from "rrule";
+import { rrulestr } from "./rrule";
 import {
   addDays,
   assertIanaZone,

@@ -11,13 +11,13 @@ import NextAuth from "next-auth";
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import Resend from "next-auth/providers/resend";
 import { prisma } from "@/lib/db";
-import { env } from "@/lib/env";
+import { env, requireAuthSecret } from "@/lib/env";
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: PrismaAdapter(prisma),
   // Database sessions: revocable server-side, which matters for a private calendar.
   session: { strategy: "database", maxAge: 60 * 60 * 24 * 30 },
-  secret: env.AUTH_SECRET,
+  secret: requireAuthSecret(),
   trustHost: true,
   providers: [
     Resend({
