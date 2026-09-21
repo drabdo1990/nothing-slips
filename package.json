@@ -6,9 +6,11 @@
   "scripts": {
     "dev": "next dev",
     "build": "prisma generate && next build",
+    "vercel-build": "prisma generate && prisma migrate deploy && next build",
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
+    "icons": "tsx scripts/generate-icons.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "db:push": "prisma db push",

@@ -19,6 +19,15 @@ export const metadata: Metadata = {
     "A calm, dependable personal scheduler. Every commitment, with an alarm that actually fires.",
   applicationName: "Nothing Slips",
   manifest: "/manifest.webmanifest",
+  // The manifest covers Android/desktop install; these cover the browser tab and iOS Home Screen,
+  // which do not read the manifest for their icons.
+  icons: {
+    icon: [
+      { url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icons/icon-512.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: [{ url: "/icons/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
+  },
   appleWebApp: { capable: true, title: "Nothing Slips", statusBarStyle: "default" },
   formatDetection: { telephone: false },
 };
