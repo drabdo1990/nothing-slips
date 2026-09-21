@@ -15,7 +15,12 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+  // Pooled URL — what the serverless functions use at runtime.
   url      = env("DATABASE_URL")
+  // Unpooled URL — used ONLY by `prisma migrate`. Migrations take advisory locks and use prepared
+  // statements, neither of which survives a connection pooler (Neon pgbouncer, Supabase Supavisor).
+  // Locally the two are the same value; see .env.example.
+  directUrl = env("DIRECT_URL")
 }
 
 // ─────────────────────────────────────────────────────────────── auth

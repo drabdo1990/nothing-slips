@@ -2,10 +2,15 @@ node_modules
 .next
 out
 build
-.env
-.env*.local
-.env.deploy*
-.vercel
 *.tsbuildinfo
 next-env.d.ts
 .DS_Store
+
+# Environment files. `.env.example` is the documented template and IS tracked, so the negation
+# below must come after the wildcard — otherwise a recreated template is silently ignored.
+.env
+.env*
+!.env.example
+
+# Vercel CLI state (contains a project link and a short-lived OIDC token).
+.vercel
