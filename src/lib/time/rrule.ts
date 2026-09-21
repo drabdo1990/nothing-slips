@@ -27,7 +27,15 @@ interface ResolvedRruleModule {
 
 /** Bundler path: named exports sit on the namespace. Node path: everything sits under `default`. */
 const namespace = rruleNamespace as unknown as Partial<ResolvedRruleModule>;
-const cjsDefault = (rruleNamespace as unknown as { default?: ResolvedRruleModule }).default;
+
+// `Reflect.get` rather than `.default`: webpack statically resolves property access against a
+// namespace import and (correctly) knows rrule's ESM build has no `default` export, which produced
+// "Attempted import error: 'rrule' does not contain a default export" during `next build` — even
+// though this access is only ever reached in Node, where the namespace IS the CJS module object.
+// Reflecting avoids that static check while keeping the runtime fallback intact.
+const cjsDefault = Reflect.get(rruleNamespace as object, "default") as
+  | Partial<ResolvedRruleModule>
+  | undefined;
 
 function resolve<K extends keyof ResolvedRruleModule>(key: K): ResolvedRruleModule[K] {
   const value = namespace[key] ?? cjsDefault?.[key];

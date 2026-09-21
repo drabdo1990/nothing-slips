@@ -6,11 +6,18 @@ build
 next-env.d.ts
 .DS_Store
 
-# Environment files. `.env.example` is the documented template and IS tracked, so the negation
-# below must come after the wildcard — otherwise a recreated template is silently ignored.
+# Environment files. `.env.example` is the documented template and IS tracked, so the negation MUST
+# come last. The Vercel CLI appends `.env*` to this file every time it links a project, which
+# otherwise silently re-ignores the template.
 .env
 .env*
 !.env.example
 
-# Vercel CLI state (contains a project link and a short-lived OIDC token).
+# Vercel CLI state (project link plus a short-lived OIDC token).
 .vercel
+
+# Agent tooling installed by the Vercel/Neon integration via `npx skills add`. Kept on disk so agent
+# sessions still have them, but not published — this is vendor scaffolding, not application code.
+.agents/
+.claude/
+skills-lock.json

@@ -97,21 +97,24 @@ const toWrite = [];
 for (const key of MANAGED) {
   const value = values.get(key)?.trim() ?? "";
   const cells = TARGETS.map((target) => {
-    const already = present.has(`${key}|${target}`);
-    if (!value) {
-      // Count the KEY as missing, not each environment cell — otherwise "3 keys" reports as 9.
-      if (!OPTIONAL.has(key)) missingRequired.add(key);
-      return "no value".padEnd(14);
-    }
-    if (!already) toWrite.push({ key, target, value });
-    return (already ? "set" : "will set").padEnd(14);
+    const onVercel = present.has(`${key}|${target}`);
+    if (value && !onVercel) toWrite.push({ key, target, value });
+
+    // Distinguish "configured on Vercel" from "has a value in the local file" — conflating the two
+    // reported a var as missing when it was already working, and conversely demanded values locally
+    // for keys that Vercel already had (e.g. a database wired by the Neon integration).
+    if (onVercel && value) return "set".padEnd(14);
+    if (onVercel) return "on vercel".padEnd(14);
+    if (value) return "will set".padEnd(14);
+    if (!OPTIONAL.has(key)) missingRequired.add(key);
+    return "MISSING".padEnd(14);
   });
   console.log(key.padEnd(30) + cells.join(""));
 }
 
 if (missingRequired.size > 0) {
   console.log(
-    `\n  ${missingRequired.size} required key(s) missing from ${ENV_FILE}: ${[...missingRequired].join(", ")}`,
+    `\n  ${missingRequired.size} required key(s) neither set locally nor on Vercel: ${[...missingRequired].join(", ")}`,
   );
   console.log("  Fill them in and run this again.\n");
   process.exit(1);
